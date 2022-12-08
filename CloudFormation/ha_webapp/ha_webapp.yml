@@ -1,3 +1,4 @@
+AWSTemplateFormatVersion: 2010-09-09
 
 Description: Deploy a HA website using an ALB and ASG
 
