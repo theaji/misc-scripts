@@ -1,0 +1,289 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Build on v1 by adding Scaling policy
+
+Parameters:
+#Get latest ami id published by AWS
+  LatestAmiId:
+    Description: AMI for Instance (default is latest AmaLinux2)
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+#Change to an existing keypair
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing SSH Keypair to access the instance
+    Default: key.pem #Change this
+#ASG configuration parameters
+  AsgMax:
+    Description: Specifies the maximum number of EC2 instances in the Web Autoscaling Group.
+    AllowedPattern: ^([0-0]?[0-9]|10)$
+    ConstraintDescription: Must be a number between 1 and 30.
+    Default: 4
+    Type: String
+  AsgMin:
+    Description: Specifies the minimum number of EC2 instances in the Web Autoscaling Group.
+    AllowedPattern: ^([0-0]?[0-9]|10)$
+    ConstraintDescription: Must be a number between 0 and 10.
+    Default: 2
+    Type: String
+  AsgDesired:
+    Description: Specifies the Desired of EC2 instances in the Web Autoscaling Group.
+    AllowedPattern: ^([0-0]?[0-9]|10)$
+    ConstraintDescription: Must be a number between 0 and 10.
+    Default: 2
+    Type: String 
+
+
+Resources:
+
+#Create the VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.50.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ha-vpc
+
+#Create internet gateway and attachment
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-ha-igw
+        
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+#Create route table 
+  RouteTableWeb: 
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-vpc-rt-web
+
+  RouteTableWebDefaultIPv4: 
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTableWeb
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId:
+        Ref: InternetGateway
+        
+        
+  RouteTableAssociationWebA:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetWEBA
+      RouteTableId:
+        Ref: RouteTableWeb
+        
+  RouteTableAssociationWebB:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetWEBB
+      RouteTableId:
+        Ref: RouteTableWeb
+        
+  RouteTableAssociationWebC:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetWEBC
+      RouteTableId:
+        Ref: RouteTableWeb
+        
+#Create 3 web subnets
+  SubnetWEBA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.50.80.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-sn-webA
+          
+  SubnetWEBB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.50.96.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-sn-webB
+          
+  SubnetWEBC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      CidrBlock: 10.50.20.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-sn-webC
+ 
+#Create security groups
+  SGWEB:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Control access to WEB Instance(s)
+      SecurityGroupIngress: 
+        - Description: 'Allow HTTP IPv4 IN'
+          IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: '0.0.0.0/0'
+        - Description: 'Allow WWW IN FROM ALB'
+          IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          SourceSecurityGroupId: !Ref SGLoadBalancer
+          
+  SGLoadBalancer:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Control access to Load Balancer
+      SecurityGroupIngress: 
+        - Description: 'Allow HTTP IPv4 IN'
+          IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: '0.0.0.0/0'
+
+#Create Launch Template
+  WEBLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties: 
+      LaunchTemplateData: 
+        InstanceType: "t2.micro"
+        ImageId: !Ref LatestAmiId
+        KeyName: !Ref KeyName
+        SecurityGroupIds: 
+          - !Ref SGWEB
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
+
+            # STEP 1 - Updates
+            yum -y update
+            
+            # STEP 2 - Begin Configuration
+            yum -y install httpd
+            systemctl enable httpd
+            systemctl start httpd
+            instanceId=$(curl http://169.254.169.254/latest/meta-data/instance-id)
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)
+            instanceType=$(curl http://169.254.169.254/latest/meta-data/instance-type)
+            echo "<html><head></head><body>" >> /var/www/html/index.html
+            echo "<center><h1>Instance ID : $instanceId</h1></center><br>" >> /var/www/html/index.html
+            echo "<center><h1>Instance AZ : $AZ</h1></center><br>" >> /var/www/html/index.html
+            echo "<center><h1>Instance Type : $instanceType</h1></center><br>" >> /var/www/html/index.html
+            echo "</body></html>" >> /var/www/html/index.html
+            sudo timedatectl set-timezone America/New_York
+            sudo systemctl restart rsyslog.service
+
+            
+#Create ASG and Scaling Policy
+  ASG: 
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties: 
+      VPCZoneIdentifier:
+        - !Ref SubnetWEBA
+        - !Ref SubnetWEBB
+        - !Ref SubnetWEBC
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WEBLaunchTemplate
+        Version: "1"
+      MaxSize: !Ref AsgMax
+      MinSize: !Ref AsgMin
+      DesiredCapacity: !Ref AsgDesired
+      Tags:
+        - Key: "Name"
+          Value: !Join [ '', [ 'ha-web' ] ]
+          PropagateAtLaunch: true
+      HealthCheckType: ELB
+      Cooldown: 120
+      HealthCheckGracePeriod: 300
+      TargetGroupARNs:
+        - !Ref ALBTG
+
+  ScalingPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref ASG
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 80
+
+
+#Create ALB, ALB listener and ALB TargetGroup
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      IpAddressType: "ipv4"
+      Scheme: "internet-facing"
+      SecurityGroups: 
+        - !Ref SGLoadBalancer
+      Subnets: 
+        - !Ref SubnetWEBA
+        - !Ref SubnetWEBB
+        - !Ref SubnetWEBC
+      Tags: 
+        - Key: Name
+          Value: !Join [ '', [ 'ALB-', !Ref 'AWS::StackName' ] ]
+      Type: "application"
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTG
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+  ALBTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /index.html
+      HealthCheckTimeoutSeconds: 5
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VPC
+      TargetGroupAttributes:
+        - Key: stickiness.enabled #To test ALB is forwarding traffic from your ip to all instances
+          Value: false
+
+
+    
+          
+Outputs:
+  HAvpc:
+    Description: VPC ID
+    Value: !Ref VPC
+  ALBURL:
+    Description: The Load Balancer URL
+    Value: !Sub 'http://${ALB.DNSName}'
+
