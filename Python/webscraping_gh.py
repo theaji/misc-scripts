@@ -4,6 +4,7 @@
 import requests #Used to make http requests
 from bs4 import BeautifulSoup as bs #used to extract information from HTML files
 
+#Define function
 def scrape():
 #Use try/except block for error catch-all
     try:
@@ -33,6 +34,6 @@ def scrape():
     except:
         print("Please enter a valid Github username")
                 
-
+#Call function
 scrape()
 
