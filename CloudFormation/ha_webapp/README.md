@@ -13,11 +13,12 @@ The [ha_webapp.yml](https://github.com/theaji/projects/blob/main/ha_webapp/ha_we
 The template launches the specified amount of instances and uses healthchecks to monitor their status.
 
 [v2](https://github.com/theaji/projects/blob/main/ha_webapp/ha_webapp_v2.yml) of this template adds scaling policies. 
+
 ## Commands used
 
 To validate the template: `aws cloudformation validate-template --template-body file://ha_webapp.yml`
 
-To deploy stack: `aws cloudformation create-stack --stack-name webapp-stack --template-body file://ha_webapp.yaml`
+To deploy stack: `aws cloudformation create-stack --stack-name webapp-stack --template-body file://ha_webapp.yml`
 
 To check stack status and view outputs: `aws cloudformation describe-stacks --stack-name webapp-stack`
 
