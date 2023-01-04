@@ -1,0 +1,34 @@
+#Specify version
+version: '3.9'
+
+  
+services:
+  redis:
+    image: redislabs/redismod
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - labnet
+    restart: unless-stopped
+  webserver:
+  #Build from dockerfile in same directory
+    build: .
+    container_name: webserver
+    networks:
+      - labnet
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./web-data:/code
+    depends_on: 
+      - redis
+
+      
+networks:
+  labnet:
+    ipam:
+      driver: default
+      config:
+        - subnet: "192.168.95.0/24"
