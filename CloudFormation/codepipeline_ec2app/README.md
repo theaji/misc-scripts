@@ -10,7 +10,7 @@ EC2 | CodeCommit | CodeDeploy | CodePipeline | S3 | VPC
 
 ### Section 1
 
-Creates a VPC, Internet Gatewa, Route table  and Subnet necessary for the EC2 instance
+Creates a VPC, Internet Gateway, Route table  and Subnet necessary for the EC2 instance
 
 ### Section 2
 
