@@ -8,7 +8,7 @@ VPC | EC2 | Auto Scaling | Elastic Load Balancing
 
 # Summary
 
-The [ha_webapp.yml](https://github.com/theaji/projects/blob/main/ha_webapp/ha_webapp.yml) Cloudformation template was used to complete this lab
+The [ha_webapp.yml](https://github.com/theaji/projects/blob/main/ha_webapp/ha_webapp.yml) Cloudformation template was used to complete this project
 
 The template launches the specified amount of instances and uses healthchecks to monitor their status.
 
