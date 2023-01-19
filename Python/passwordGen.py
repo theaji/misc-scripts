@@ -4,6 +4,8 @@ numbers = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 symbols = ['!', '#', '$', '%', '&', '*', '+']
 
 print("Welcome to the PyPassword Generator! \n")
+
+#Get input from user and check if password complexity requirements are met
 def greetings():
     try:
         global nr_letters
@@ -26,7 +28,7 @@ def greetings():
         print("Please enter a valid number")
         greetings()
 
-
+#Generate the password
 def password_gen():
     global password_list
     password_list = []
@@ -48,6 +50,7 @@ def password_gen():
     print(password)
     print("")    
 
+#Ask user if they would like to generate another password
 def play_again():
     pause = input("Please press Enter to continue")
     again = input("Please type 'yes' if you would like to generate another password: \n").lower()
