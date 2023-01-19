@@ -10,7 +10,7 @@ response = r.json()
 
 def retrieve():
 
-    if "success" in response: 
+    if r.status_code == 200: 
         print("Your Quote of the Day is: \n")
         reply()
 
