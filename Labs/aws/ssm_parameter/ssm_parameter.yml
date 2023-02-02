@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Create an SSM parameter 
+
+Resources:
+
+#Create an SNS topic
+  QuickTopic:
+    Type: AWS::SNS::Topic
+
+#Add sns topic arn to ssm
+  BasicParameter:
+    Type: AWS::SSM::Parameter
+    DeletionPolicy: Retain #Retains the parameter if the CloudFormation stack is deleted
+    Properties:
+      Name: !Sub '/TEST/${AWS::StackName}'
+      Type: String
+      Value: !Ref QuickTopic
+      Description: SSM Parameter for SNS Topic
+
+Outputs:
+
+  ParamName:
+    Description: Name of parameter
+    Value: !Ref BasicParameter.

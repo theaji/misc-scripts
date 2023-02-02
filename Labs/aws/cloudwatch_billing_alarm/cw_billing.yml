@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Billing Alerts for AWS Account
+
+Parameters:
+  Email:
+    Type: String
+    Default: youremail@somerandomdomain.com
+    Description: The email address to receive alerts per email
+
+Mappings:
+  EstimatedCharges:
+    AlarmRange:
+      "Threshold": 3 # Triggers an alarm if charges go above $3
+
+Resources:
+  BillingAlert:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmActions:
+        - !Ref BillingAlertTopic
+      AlarmDescription:
+        !Join [
+          "",
+          [Alert for $, !FindInMap [EstimatedCharges, AlarmRange, Threshold]],
+        ]
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: Currency
+          Value: USD
+      EvaluationPeriods: 1
+      MetricName: EstimatedCharges
+      Namespace: AWS/Billing
+      Period: 21600
+      TreatMissingData: ignore
+      Statistic: Maximum
+      Threshold: !FindInMap [EstimatedCharges, AlarmRange, Threshold]
+
+  BillingAlertTopic:
+    Type: AWS::SNS::Topic
+
+  AlarmSubscriberEmail:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref Email
+      Protocol: email
+      TopicArn: !Ref BillingAlertTopic

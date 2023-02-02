@@ -1,0 +1,32 @@
+#Specify template version
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: This is a template to create an empty CodeCommit Repository
+
+    
+Resources: 
+    Repository:
+      Type: AWS::CodeCommit::Repository
+      Properties:
+        RepositoryName: !Sub DevRepo-${AWS::StackName}
+        RepositoryDescription: Development repository
+        Tags:
+        - Key: Name
+          Value: dev-code-commit
+
+Outputs:
+  RepositoryName:
+    Description: ID of the CodeCommit Repository
+    Value: !GetAtt
+      - Repository
+      - Name
+  RepositoryURLA:
+    Description: HTTP url to clone the repository
+    Value: !GetAtt
+      - Repository
+      - CloneUrlHttp
+  RepositoryURLB:
+    Description: SSH url to clone the repository
+    Value: !GetAtt
+      - Repository
+      - CloneUrlSsh
