@@ -1,0 +1,169 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Create a VPC and a publicly accessible EC2 instance
+
+Parameters:
+  LatestAmiId:
+    Description: AMI for Host (default is latest AmaLinux2)
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing SSH Keypair to access the instance
+    Default: key.pem #Change this
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.10.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: dev-vpc
+  IPv6CidrBlock:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AmazonProvidedIpv6CidrBlock: true
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: dev-vpc1-igw
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  RouteTablePublic: 
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: dev-vpc1-rt-public
+  RouteTablePublicDefaultIPv4: 
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTablePublic
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId:
+        Ref: InternetGateway
+  RouteTablePublicDefaultIPv6: 
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTablePublic
+      DestinationIpv6CidrBlock: '::/0'
+      GatewayId:
+        Ref: InternetGateway
+  RouteTableAssociationpublicA:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetPublic 
+      RouteTableId:
+        Ref: RouteTablePublic
+  SubnetPrivate:
+    Type: AWS::EC2::Subnet
+    DependsOn: IPv6CidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.10.64.0/20
+      AssignIpv6AddressOnCreation: false
+      Ipv6CidrBlock: 
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '05::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 0, !GetAtt VPC.Ipv6CidrBlocks ]]]
+      Tags:
+        - Key: Name
+          Value: sn-private
+  SubnetPublic:
+    Type: AWS::EC2::Subnet
+    DependsOn: IPv6CidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.10.80.0/20
+      MapPublicIpOnLaunch: true
+      Ipv6CidrBlock: 
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '03::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 0, !GetAtt VPC.Ipv6CidrBlocks ]]]
+      Tags:
+        - Key: Name
+          Value: sn-public
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: !Ref KeyName
+      InstanceType: "t2.micro"
+      ImageId: !Ref LatestAmiId
+      SecurityGroups:
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: dev-ec2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum -y update
+          yum -y upgrade
+          yum install -y httpd amazonefs-utils
+          systemctl enable httpd
+          systemctl start httpd
+          cd /var/www/html
+          curl http://169.254.169.254/latest/meta-data/public-hostname -o index.html
+          sudo timedatectl set-timezone America/New_York
+          sudo systemctl restart rsyslog.service
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH access via port 22 and 80
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: '0.0.0.0/24' #Change this
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: '0.0.0.0/24' #Change this
+Outputs:
+  DevVpc:
+    Description: Dev VPC
+    Value: !Ref VPC
+    Export: 
+      Name: dev-vpc
+  DevVpcSubnetPublic:
+    Description: Dev VPC Public Subnet
+    Value: !Ref SubnetPublic
+  DevVpcSubnetPrivate:
+    Description: Dev VPC Private Subnet
+    Value: !Ref SubnetPrivate
+  InstanceId:
+    Description: InstanceId of EC2 instance
+    Value: !Ref EC2Instance
+  AZ:
+    Description: Availability Zone of EC2 instance
+    Value: !GetAtt 
+      - EC2Instance
+      - AvailabilityZone
+  PublicDNS:
+    Description: Public DNSName of EC2 instance
+    Value: !GetAtt 
+      - EC2Instance
+      - PublicDnsName
+  PublicIP:
+    Description: Public IP address of EC2 instance
+    Value: !GetAtt 
+      - EC2Instance
+      - PublicIp 

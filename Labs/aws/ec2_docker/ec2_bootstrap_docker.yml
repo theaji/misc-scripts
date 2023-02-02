@@ -1,0 +1,233 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Create a VPC and a publicly accessible EC2 instance running docker engine and docker-compose. Change lines 16, 203 and 207 as indicated.
+
+Parameters:
+
+#Retrieve latest ami id from SSM
+  LatestAmiId:
+    Description: AMI for Host (default is latest AmaLinux2)
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing SSH Keypair to access the instance
+    Default: key.pem #change this to an existing key pair
+
+Resources:
+
+#Create VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 192.168.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub dev-vpc-{AWS::StackName}
+          
+#Create IPV6CidrBlock
+  IPv6CidrBlock:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AmazonProvidedIpv6CidrBlock: true
+      
+#Create InternetGateway
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub dev-vpc1-igw-{AWS::StackName}
+#Attach InternetGateway
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+      
+#Create public route table
+  RouteTablePublic: 
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Sub dev-vpc1-rt-public-{AWS::StackName}
+  RouteTablePublicDefaultIPv4: 
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTablePublic
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId:
+        Ref: InternetGateway
+  RouteTablePublicDefaultIPv6: 
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTablePublic
+      DestinationIpv6CidrBlock: '::/0'
+      GatewayId:
+        Ref: InternetGateway
+        
+#Attach public route table
+  RouteTableAssociationpublic:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetPublic 
+      RouteTableId:
+        Ref: RouteTablePublic
+        
+#Create private subnet
+  SubnetPrivate:
+    Type: AWS::EC2::Subnet
+    DependsOn: IPv6CidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 192.168.40.0/24
+      MapPublicIpOnLaunch: false
+      AssignIpv6AddressOnCreation: false
+      Ipv6CidrBlock: 
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '05::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 0, !GetAtt VPC.Ipv6CidrBlocks ]]]
+      Tags:
+        - Key: Name
+          Value: !Sub sn-private-{AWS::StackName}
+
+#Create public subnet
+  SubnetPublic:
+    Type: AWS::EC2::Subnet
+    DependsOn: IPv6CidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 192.168.50.0/24
+      MapPublicIpOnLaunch: true
+      Ipv6CidrBlock: 
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '03::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 0, !GetAtt VPC.Ipv6CidrBlocks ]]]
+      Tags:
+        - Key: Name
+          Value: !Sub sn-public-{AWS::StackName}
+
+#Create EC2 instance
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: VPC
+    Metadata: #Using cfn-init 
+      'AWS::CloudFormation::Init':
+        config:
+          packages:
+            yum:
+              docker: []
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: 000400
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init --stack ${AWS::StackName} --resource EC2Instance --region ${AWS::Region}
+                runas=root
+          services:
+            sysvinit:
+              docker:
+                enabled: true
+                ensureRunning: true
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+    CreationPolicy: 
+      ResourceSignal:
+        Timeout: PT20M
+    Properties:
+      SubnetId: !Ref SubnetPublic
+      KeyName: !Ref KeyName
+      InstanceType: "t2.micro"
+      ImageId: !Ref "LatestAmiId"
+      SecurityGroupIds: 
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub dev-ec2-{AWS::StackName}
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          #Update aws-cfn-bootstrap and install 
+          yum install -y aws-cfn-bootstrap
+          #Use cfn-init script to install files and packages
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region}
+          #Retrieve docker-compose installer
+          curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
+          #Create a symlink
+          ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+          #Make the file executable
+          chmod +x /usr/local/bin/docker-compose
+          #Configure docker to run an nginx container
+          docker run -d -p 80:80 --name webserver nginx:stable-alpine
+          #Send signal to Cloudformation
+          /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region}
+
+#Create Security Group
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH access via port 22 and 80
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: '0.0.0.0/24' #Change this to your IP
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: '0.0.0.0/24' #Change this to your IP 
+          
+Outputs:
+  DevVpcSubnetPublic:
+    Description: Dev VPC Public Subnet
+    Value: !Ref SubnetPublic
+  DevVpcSubnetPrivate:
+    Description: Dev VPC Private Subnet
+    Value: !Ref SubnetPrivate
+  InstanceId:
+    Description: InstanceId of EC2 instance
+    Value: !Ref EC2Instance
+  AZ:
+    Description: Availability Zone of EC2 instance
+    Value: !GetAtt 
+      - EC2Instance
+      - AvailabilityZone
+  PublicDNS:
+    Description: Public DNSName of EC2 instance
+    Value: !GetAtt 
+      - EC2Instance
+      - PublicDnsName
+  PublicIP:
+    Description: Public IP address of EC2 instance
+    Value: !GetAtt 
+      - EC2Instance
+      - PublicIp 

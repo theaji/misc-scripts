@@ -1,0 +1,254 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Create a VPC and a publicly accessible EC2 instance. This template will also send signal to CloudFormation once bootstrap process has been completed. Change lines 16, 222 and 227 before deploying this template.
+
+Parameters:
+
+#Retrieve latest amazon linux ami published by AWS
+  LatestAmiId:
+    Description: AMI for Host (default is latest AmaLinux2)
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing SSH Keypair to access the instance
+    Default: key.pem #change this
+
+Resources:
+
+#Create VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: dev-vpc
+          
+#Create IPV6CidrBlock
+  IPv6CidrBlock:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AmazonProvidedIpv6CidrBlock: true
+      
+#Create InternetGateway
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: dev-vpc-igw
+#Attach InternetGateway
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+      
+#Create public route table
+  RouteTablePublic: 
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: dev-vpc-rt-public
+  RouteTablePublicDefaultIPv4: 
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTablePublic
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId:
+        Ref: InternetGateway
+  RouteTablePublicDefaultIPv6: 
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTablePublic
+      DestinationIpv6CidrBlock: '::/0'
+      GatewayId:
+        Ref: InternetGateway
+        
+#Attach public route table
+  RouteTableAssociationpublic:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetPublic 
+      RouteTableId:
+        Ref: RouteTablePublic
+        
+#Create private subnet
+  SubnetPrivate:
+    Type: AWS::EC2::Subnet
+    DependsOn: IPv6CidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.10.64.0/20
+      MapPublicIpOnLaunch: false
+      AssignIpv6AddressOnCreation: false
+      Ipv6CidrBlock: 
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '05::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 0, !GetAtt VPC.Ipv6CidrBlocks ]]]
+      Tags:
+        - Key: Name
+          Value: sn-private
+
+#Create public subnet
+  SubnetPublic:
+    Type: AWS::EC2::Subnet
+    DependsOn: IPv6CidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.10.80.0/20
+      MapPublicIpOnLaunch: true
+      AssignIpv6AddressOnCreation: false
+      Ipv6CidrBlock: 
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '03::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 0, !GetAtt VPC.Ipv6CidrBlocks ]]]
+      Tags:
+        - Key: Name
+          Value: sn-public
+
+#Create EC2 instance
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: VPC
+#Add cfn-init config
+    Metadata: 
+      'AWS::CloudFormation::Init':
+        config:
+          packages:
+            yum:
+              httpd: []
+              php: []
+          files:
+            /var/www/html/index.php:
+              content: |
+                <!DOCTYPE html>
+                <html>
+                <body>
+                  <center>
+                    <?php
+                    # Get the instance ID and store it in the $instance_id variable
+                    $url = "http://169.254.169.254/latest/meta-data/instance-id";
+                    $instance_id = file_get_contents($url);
+                    # Get the instance AZ and store it in the $zone variable
+                    $url = "http://169.254.169.254/latest/meta-data/placement/availability-zone";
+                    $zone = file_get_contents($url);
+                    ?>
+                    <h2>EC2 Instance ID: <?php echo $instance_id ?></h2>
+                    <h2>Availability Zone: <?php echo $zone ?></h2>
+                  </center>
+                </body>
+                </html>
+              mode: 000644
+              owner: apache
+              group: apache
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: 000400
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init --stack ${AWS::StackName} --resource EC2Instance --region ${AWS::Region}
+                runas=root
+          services:
+            sysvinit:
+              httpd:
+                enabled: true
+                ensureRunning: true
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+    CreationPolicy: 
+      ResourceSignal:
+        #Specify how long CloudFormation waits for signal from EC2 instance
+        Timeout: PT10M
+    Properties:
+      SubnetId: !Ref SubnetPublic
+      KeyName: !Ref KeyName
+      InstanceType: "t2.micro"
+      ImageId: !Ref "LatestAmiId"
+      SecurityGroupIds: 
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: dev-ec2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          #Update aws-cfn-bootstrap
+          yum install -y aws-cfn-bootstrap
+          #Install files and packages
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region}
+          #Send signal to Cloudformation
+          /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region}
+
+#Create Security Group
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH access via port 22 and 80
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      #Allow ssh traffic 
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 'x.x.x.x/32' #Change to your ip address or 0.0.0.0/0 to accept all traffic
+       #Allow http traffic
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 'x.x.x.x/32' #Change to your ip address or 0.0.0.0/0 to accept all traffic
+          
+#Get outputs from VPC and EC2 instance           
+Outputs:
+  VpcSubnetPublic:
+    Description: Dev VPC Public Subnet
+    Value: !Ref SubnetPublic
+  VpcSubnetPrivate:
+    Description: Dev VPC Private Subnet
+    Value: !Ref SubnetPrivate
+  InstanceId:
+    Description: InstanceId of EC2 instance
+    Value: !Ref EC2Instance
+  AZ:
+    Description: Availability Zone of EC2 instance
+    Value: !GetAtt 
+      - EC2Instance
+      - AvailabilityZone
+  PublicDNS:
+    Description: Public DNSName of EC2 instance
+    Value: !GetAtt 
+      - EC2Instance
+      - PublicDnsName
+  PublicIP:
+    Description: Public IP address of EC2 instance
+    Value: !GetAtt 
+      - EC2Instance
+      - PublicIp

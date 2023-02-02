@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: This template creates a base VPC and launches an EC2 instance before proceeding to install the codedeploy agent
+
+Parameters:
+
+  LatestAmiId:
+    Description: AMI for Host (default is latest AmaLinux2)
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+  EnvironmentName:
+    Description: 'Specify environment using this template'
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+      - test
+    ConstraintDescription: 'Specify either Dev, Prod or Test'
+  TagKeyA:
+    Type: String
+    Default: UseWithCodeDeploy
+  TagValueA:
+    Type: String
+    Default: true
+
+Mappings:
+  
+  EnvironmentMap: #This is the map name
+    dev: #This is the top level key. Must be the same 
+      InstanceType: t2.micro #This is the second level key 
+      VolumeSize: 2
+    test:
+      InstanceType: t2.micro
+      VolumeSize: 1
+    prod:
+      InstanceType: t2.small
+      VolumeSize: 4
+
+
+Resources:
+
+#Section 1: Create VPC 
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-vpc-{AWS::StackName}
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub ${EnvironmentName}-igw-{AWS::StackName}
+        
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+      
+  RouteTableWeb: 
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Sub ${EnvironmentName}-rt-web-${AWS::StackName}
+
+  RouteTableWebDefaultIPv4: 
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTableWeb
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId:
+        Ref: InternetGateway
+        
+  RouteTableAssociationWebA:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetWEBA
+      RouteTableId:
+        Ref: RouteTableWeb
+        
+  SubnetWEBA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.20.80.0/20
+      MapPublicIpOnLaunch: true
+      AssignIpv6AddressOnCreation: false
+      Tags:
+        - Key: Name
+          Value: !Sub sn-webA-${AWS::StackName}
+          
+#Section 2: Create EC2 instance
+  EC2InstanceA:
+    Type: AWS::EC2::Instance
+    Metadata: #Using cfn-init 
+      'AWS::CloudFormation::Init':
+        config:
+          packages:
+            yum:
+              htop: []
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: 000400
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2InstanceA.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init --stack ${AWS::StackName} --resource EC2InstanceA --region ${AWS::Region}
+                runas=root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+              codedeploy-agent:
+                enabled: true
+                ensureRunning: true
+    CreationPolicy: 
+      ResourceSignal:
+        Timeout: PT20M
+    Properties:
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SubnetId: !Ref SubnetWEBA
+      InstanceType: !FindInMap
+        - EnvironmentMap
+        - !Ref EnvironmentName
+        - InstanceType
+      ImageId: !Ref "LatestAmiId"
+      SecurityGroupIds: 
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Join [ '-', [ !Ref EnvironmentName, codedeploy ] ]
+        - Key: Environment
+          Value: !Sub ${EnvironmentName}
+        - Key: !Ref TagKeyA
+          Value: !Ref TagValueA
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          #Install aws-cfn-bootstrap and ruby for codedeploy script
+          yum install -y aws-cfn-bootstrap ruby
+          #Install Codedeploy agent
+          cd /tmp
+          wget https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
+          chmod +x ./install
+          ./install auto
+          #Use cfn-init script to install files and packages
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EC2InstanceA --region ${AWS::Region}
+          #Send signal to Cloudformation
+          /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackId} --resource EC2InstanceA --region ${AWS::Region}
+
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH access via port 22 and 80
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: '0.0.0.0/0'
+
+  EC2Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+              - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
+  EC2InstanceProfile: 
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref EC2Role
+        
+Outputs:
+  PublicIP:
+    Description: Public IP address of EC2 instance
+    Value: !GetAtt 
+      - EC2InstanceA
+      - PublicIp 

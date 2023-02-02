@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Create an EC2 launch template to launch web server instances
+
+Parameters:
+#Get latest ami id published by AWS
+  LatestAmiId:
+    Description: AMI for Instance (default is latest AmaLinux2)
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+#Change to an existing keypair
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing SSH Keypair to access the instance
+    Default: key.pem #Change this
+
+Resources:
+    
+#Create security groups
+  SGWEB:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Control access to WEB Instance(s)
+      SecurityGroupIngress: 
+        - Description: 'Allow HTTP IPv4 IN'
+          IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: '0.0.0.0/0'
+
+
+#Create Launch Template
+  WEBLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties: 
+      LaunchTemplateData: 
+        InstanceType: "t2.micro"
+        ImageId: !Ref LatestAmiId
+        KeyName: !Ref KeyName
+        IamInstanceProfile: !Ref SSMIAMRole
+        SecurityGroupIds: 
+          - !Ref SGWEB
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
+
+            # Perform updates
+            yum -y update
+            
+            # Configure web server 
+            yum -y install httpd
+            systemctl enable httpd
+            systemctl start httpd
+            instanceId=$(curl http://169.254.169.254/latest/meta-data/instance-id)
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)
+            instanceType=$(curl http://169.254.169.254/latest/meta-data/instance-type)
+            echo "<html><head></head><body>" >> /var/www/html/index.html
+            echo "<center><h1>Instance ID : $instanceId</h1></center><br>" >> /var/www/html/index.html
+            echo "<center><h1>Instance AZ : $AZ</h1></center><br>" >> /var/www/html/index.html
+            echo "<center><h1>Instance Type : $instanceType</h1></center><br>" >> /var/www/html/index.html
+            echo "</body></html>" >> /var/www/html/index.html
+            sudo timedatectl set-timezone America/New_York
+            sudo systemctl restart rsyslog.service
+            
+#Create role to allow SSM access
+
+  SSMIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+  SSMIAMInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref SSMIAMRole
+
+Outputs:
+  LTID:
+    Description: ID of Launch Template
+    Value: !Ref WEBLaunchTemplate
