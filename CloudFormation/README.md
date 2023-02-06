@@ -1,3 +1,3 @@
 # CF-Projects
 
-Projects & Labs completed with CloudFormation can be found here
+Projects & Labs completed with CloudFormation 
