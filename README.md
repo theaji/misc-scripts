@@ -6,4 +6,4 @@ This repo contains steps used to complete several projects
 
 - [Cloud Resume Challenge](https://github.com/theaji/cloud-resume)
 - [Lambda Quote of the Day](https://github.com/theaji/qotd)
-
+- [Python Password Generator](https://github.com/theaji/py-password-gen)
