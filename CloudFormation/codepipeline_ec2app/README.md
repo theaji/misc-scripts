@@ -380,4 +380,6 @@ To check stack status and view outputs: `aws cloudformation describe-stacks --st
 
 To delete stack: `aws cloudformation delete-stack --stack-name codepipeline-stack`
 
+## Credits
 
+[AWS docs referenced for project idea](https://docs.aws.amazon.com/codepipeline/latest/userguide/tutorials-simple-codecommit.html)
