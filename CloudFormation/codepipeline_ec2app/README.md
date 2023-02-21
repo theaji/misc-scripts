@@ -2,6 +2,9 @@
 
 This project uses codepipeline for continuous delivery of an EC2 webapp -  using CodeCommit as a source provider
 
+## Architecture
+![codepipeline](https://user-images.githubusercontent.com/117802776/220265291-28dfa16d-cc36-44a1-a67e-4ad794fa83e1.png)
+
 ## Services covered
 
 EC2 | CodeCommit | CodeDeploy | CodePipeline | S3 | VPC
