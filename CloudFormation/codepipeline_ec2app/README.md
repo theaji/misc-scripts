@@ -1,6 +1,6 @@
 # Objective
 
-This project uses codepipeline for continuous delivery of an EC2 webapp -  using CodeCommit as a source provider
+This project uses codepipeline for CI/CD of an EC2 webapp -  using CodeCommit as a source provider
 
 ## Architecture
 ![codepipeline](https://user-images.githubusercontent.com/117802776/220268053-bcd1be53-2ed3-47e4-9f88-756c52959199.png)
