@@ -261,7 +261,7 @@ Alternatively: Install cfn-lint and use: `cfn-lint dev-stack.yml` &  `cfn-lint d
 
 Deploy stackA: `aws cloudformation create-stack --stack-name vpc-stack --template-body file://dev-vpc.yml`
  
-Deploy stackB: `aws cloudformation create-stack --stack-name dev-stack --template-body file://dev-stack.yml` --capabilities CAPABILITY_IAM
+Deploy stackB: `aws cloudformation create-stack --stack-name dev-stack --template-body file://dev-stack.yml --capabilities CAPABILITY_IAM`
 
 Check stack status and view outputs: `aws cloudformation describe-stacks --stack-name dev-stack`
 
