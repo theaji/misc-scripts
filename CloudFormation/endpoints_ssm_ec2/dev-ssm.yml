@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create interface endpoints to access a private EC2 instance
+
+Parameters:
+    
+  SSMSecurityGroup:
+    Type: String
+    
+  VPC:
+    Type: String
+    
+  PrivateSubnet:
+    Type: String
+    
+    
+Resources:
+
+#Section 5 
+# For SSM service 
+  SSMEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref SSMSecurityGroup
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      SubnetIds:
+        - !Ref PrivateSubnet
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC
+      
+# Used to make calls from SSM agent to SSM service 
+  EC2MessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref SSMSecurityGroup
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ec2messages
+      SubnetIds:
+        - !Ref PrivateSubnet
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC
+      
+# Connect to instances via secure data channel
+  SSMMessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref SSMSecurityGroup
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssmmessages
+      SubnetIds:
+        - !Ref PrivateSubnet
+      VpcEndpointType: Interface
+      VpcId: !Ref VPC

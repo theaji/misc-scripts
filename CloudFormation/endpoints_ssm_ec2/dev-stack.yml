@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Nested EC2 and SSM stack
+
+Parameters:
+    
+  TemplateBucketName:
+    Type: String
+    Bucket: Specify bucket name to retrieve template
+    Default: my-public-bucket
+    
+  Prefix:
+    Type: String
+    Default: dev
+
+  VPCCidr:
+    Type: String
+    Default: 10.60.0.0/16
+    
+  PublicCidrIP:
+    Type: String
+    Default: 10.60.0.0/24
+    
+  PrivateCidrIP:
+    Type: String
+    Default: 10.60.10.0/24
+    
+  ImageId:
+    Description: AMI for Host (default is latest AmaLinux2)
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    
+    
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    
+
+
+Resources:
+
+#Section 2
+                
+        
+  SSMStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/${Prefix}/${Prefix}-ssm.yml"
+      Parameters:
+        SSMSecurityGroup: !ImportValue dev-vpc1-ssmsg
+        PrivateSubnet: !ImportValue dev-vpc1-prisub
+        VPC: !ImportValue dev-vpc1
+        
+#Section 3
+  EC2InstanceA:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !ImportValue dev-vpc1-pubsub
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref ImageId
+      SecurityGroupIds: 
+        - !ImportValue dev-vpc1-sg
+      Tags:
+        - Key: Name
+          Value: !Sub ec2-${AWS::StackName}
+      UserData:
+        Fn::Base64: !Sub |
+            #!/bin/bash -xe
+
+            # STEP 1 - Updates
+            yum -y update
+            
+            # STEP 2 - Begin Configuration
+            yum -y install httpd
+            systemctl enable httpd
+            systemctl start httpd
+            instanceId=$(curl http://169.254.169.254/latest/meta-data/instance-id)
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)
+            instanceType=$(curl http://169.254.169.254/latest/meta-data/instance-type)
+            echo "<html><head></head><body>" >> /var/www/html/index.html
+            echo "<center><h1>Instance ID : $instanceId</h1></center><br>" >> /var/www/html/index.html
+            echo "<center><h1>Instance AZ : $AZ</h1></center><br>" >> /var/www/html/index.html
+            echo "<center><h1>Instance Type : $instanceType</h1></center><br>" >> /var/www/html/index.html
+            echo "</body></html>" >> /var/www/html/index.html
+
+  EC2InstanceB:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !ImportValue dev-vpc1-prisub
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref ImageId
+      SecurityGroupIds: 
+        - !ImportValue dev-vpc1-sgb
+      Tags:
+        - Key: Name
+          Value: !Sub ec2B-${AWS::StackName}
+          
+#Section 4
+            
+  InstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+              - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+  InstanceProfile: 
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref InstanceRole
+        
+        

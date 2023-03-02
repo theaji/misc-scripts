@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Deploy a VPC with 1 Public and 1 Private subnet
+
+Parameters:
+
+  PublicCidrIp:
+    Type: String
+    
+  PrivateCidrIP:
+    Type: String
+    
+  VPCCidrBlock:
+    Type: String
+    
+
+Resources:
+
+#Section 1
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCidrBlock
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub vpc-${AWS::StackName}
+          
+  IPv6CidrBlock:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AmazonProvidedIpv6CidrBlock: true
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub igw-${AWS::StackName}
+        
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+      
+  RouteTableWeb: 
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Sub web-${AWS::StackName}
+
+  RouteTableWebDefaultIPv4: 
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: RouteTableWeb
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId:
+        Ref: InternetGateway
+        
+  RouteTableAssociationWeb:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId:
+        Ref: RouteTableWeb
+        
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    DependsOn: IPv6CidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicCidrIp
+      MapPublicIpOnLaunch: true
+      AssignIpv6AddressOnCreation: true
+      Ipv6CidrBlock: 
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '01::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 0, !GetAtt VPC.Ipv6CidrBlocks ]]]
+      Tags:
+        - Key: Name
+          Value: !Sub sn-web-${AWS::StackName}
+          
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    DependsOn: IPv6CidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PrivateCidrIP
+      AssignIpv6AddressOnCreation: true
+      Ipv6CidrBlock: 
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '04::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 0, !GetAtt VPC.Ipv6CidrBlocks ]]]
+      Tags:
+        - Key: Name
+          Value: !Sub sn-priv-${AWS::StackName}
+  
+#Section 1A
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable HTTP access
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: '0.0.0.0/0'
+          
+  InstanceSecurityGroupB:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: No ingress
+      VpcId: !Ref VPC
+
+          
+  SSMSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow from InstanceSecurityGroupB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          SourceSecurityGroupId: !Ref InstanceSecurityGroup
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          SourceSecurityGroupId: !Ref InstanceSecurityGroupB
+
+      
+Outputs:
+  VPC:
+    Value: !Ref VPC
+    Export:
+      Name: dev-vpc1
+  PublicSubnet:
+    Value: !Ref PublicSubnet
+    Export:
+      Name: dev-vpc1-pubsub
+  PrivateSubnet:
+    Value: !Ref PrivateSubnet
+    Export:
+      Name: dev-vpc1-prisub
+  InstanceSecurityGroup:
+    Value: !Ref InstanceSecurityGroup
+    Export:
+      Name: dev-vpc1-sg
+  InstanceSecurityGroupB:
+    Value: !Ref InstanceSecurityGroupB
+    Export:
+      Name: dev-vpc1-sgb
+  SSMSecurityGroup:
+    Value: !Ref SSMSecurityGroup
+    Export:
+      Name: dev-vpc1-ssmsg
+    
