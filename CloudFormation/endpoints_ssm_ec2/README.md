@@ -11,6 +11,10 @@ Prerequisites:
 
 EC2 | Endpoints | SSM | VPC
 
+## Architecture
+
+![endpoints](https://user-images.githubusercontent.com/117802776/225514764-1f0af6dd-4d29-4e7c-ad8a-40c35716662d.png)
+
 ## Template explanation
 
 ### Section 1
