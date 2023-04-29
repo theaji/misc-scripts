@@ -1,4 +1,4 @@
-#Extract DNS sequences from a string and transform them into RNA by replacing the nucleotides
+#Extract DNA sequences from a string and transform them into RNA by replacing the nucleotides
 
 seq = "tatgctttcc#tataggtctg#ctattcaatg"
 dna_list = seq.split("#")
