@@ -18,7 +18,6 @@ echo
 echo "Running program $0 with $# arguments and with pid $$ on distribution $DISTRO"
 
 
-
 #########################################
 # help - used to provide usage guidance
 #########################################
@@ -26,7 +25,6 @@ echo "Running program $0 with $# arguments and with pid $$ on distribution $DIST
 help() {
       echo
       echo "Supported cli arguments:"
-
       echo -e "\t[-h] ->> print this help (optional)"
       echo
       echo -e "\t[-d] ->> enable debug mode (optional)"
