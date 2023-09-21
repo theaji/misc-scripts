@@ -1,18 +1,29 @@
 #!/usr/bin/env bash
 # Author; Theo
 # Description: Script to set up an rsyslog server
-# Modification reason: 07/02/2023 - script creation
+# Modification reason: 07/02/2023 - added PackageManager variable 
 
 #####################
 #Initialize variables
 #####################
-
-DISTRO=$(cat /etc/*release | grep "^ID=" | sed s/^ID=//g)
+DISTRO=$(cat /etc/*release | grep "^ID=" | sed s/^ID=//g | tr -d '"')
 RSYSLG=$(systemctl is-active rsyslog.service)
 HAS_LOGROTATE="$(type "logrotate" &> /dev/null && echo true || echo false)"
 SCRIPT="$0"
 EXIT_ON_ERROR="true"
 
+# Add support for different platforms
+declare -A osInfo;
+osInfo[/etc/redhat-release]=dnf
+osInfo[/etc/debian_version]=apt-get
+
+
+for f in "${!osInfo[@]}"
+do
+	if [[ -f $f ]]; then
+        PackageManager="${osInfo[$f]}"
+fi
+done
 
 echo
 echo "Running program $0 with $# arguments and with pid $$ on distribution $DISTRO"
@@ -109,7 +120,7 @@ fi
 CheckLogrotate(){
     if [ "${HAS_LOGROTATE}" != "true" ]; then
    	 echo "logrotate is not installed.... attempting to install"
-   	 apt install logrotate -y || echo "There was an issue installing logrotate" && exit 1
+   	 $PackageManager install logrotate -y || echo "There was an issue installing logrotate" && exit 1
 	 MoveFiles
 	 else
    	  echo
