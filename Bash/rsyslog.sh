@@ -79,10 +79,10 @@ CheckFiles() {
 
 CheckDistro()
 {
-    if [ "$DISTRO" != "ubuntu" ] && [ "$DISTRO" != "debian" ]
+    if [ "$DISTRO" != "ubuntu" ] && [ "$DISTRO" != "debian" ] && [ "$DISTRO" != "rhel" ]
     then
    	 echo
-   	 echo "This script was only tested on ubuntu/debian platforms"
+   	 echo "This script has not been fully tested on your platforms"
    	 exit 1
     else
    	 echo
