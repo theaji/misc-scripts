@@ -8,8 +8,8 @@
 
 # Commands used:
 
-Create pod: kubectl apply -f nginx.yml
-Verify pod creation: kubectl get pods
-Delete pod: kubectl delete pods nginx-pod
-View pod info: kubectl describe pods nginx-pod
+**Create pod**: `kubectl apply -f nginx.yml`
+**Verify pod creation**: `kubectl get pods`
+**Delete pod**: `kubectl delete pods nginx-pod`
+**View pod info**: `kubectl describe pods nginx-pod`
 
