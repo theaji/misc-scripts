@@ -1,0 +1,14 @@
+- name: Install mysql
+  apt: name={{ item }} state=installed
+  loop:
+    - mysql-server
+    - mysql-client
+
+- name: Start MySQL service 
+  service: 
+    name: mysql
+    state: started
+    enabled: yes
+        
+- name: Create App database
+  mysql_db: name=test_db state=present
