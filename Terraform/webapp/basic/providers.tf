@@ -19,6 +19,6 @@ provider "aws" {
     region = var.aws_regions[1]
     alias = west
     assume_role {
-        role_arn = "arn:aws:iam::1313:/role/OrganizationAccountAccessRole"
+        role_arn = "arn:aws:iam::####:/role/OrganizationAccountAccessRole"
     }
 }
