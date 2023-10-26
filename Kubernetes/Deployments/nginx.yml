@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  namespace: default
+  labels: 
+      app: myapp
+spec:
+  replicas: 3
+  selector: 
+    matchLabels:
+      type: frontend
+  strategy: 
+    type: RollingUpdate 
+    rollingUpdate:
+      maxUnavailable: 25% 
+      maxSurge: 25% 
+  template: 
+    metadata:
+      name: nginx-pod
+      labels:
+        type: front-end
+    spec:
+    containers:
+    - name: nginx-container
+      image: nginx
