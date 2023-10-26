@@ -1,0 +1,7 @@
+- name: "Backup and schedule cronjobs"
+  hosts: infra_servers
+  become: true
+  gather_facts: true
+  tasks:
+  - include_tasks: backup.yml
+  - include_tasks: schedule.yml

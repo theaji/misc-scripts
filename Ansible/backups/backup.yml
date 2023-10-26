@@ -1,0 +1,4 @@
+- name: "Backup /var directory on system"
+  community.general.archive:
+    path: "/var"
+    dest: "/tmp/var-{{ ansible_hostname }}.tgz"
