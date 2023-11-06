@@ -1,6 +1,6 @@
 # Objective
 
-This project uses codepipeline for CI/CD of an EC2 webapp -  using CodeCommit as a source provider
+Utilize codepipeline for CI/CD of a webapp running on EC2 -  using CodeCommit as a source provider
 
 ## Architecture
 ![codepipeline](https://user-images.githubusercontent.com/117802776/220268053-bcd1be53-2ed3-47e4-9f88-756c52959199.png)
@@ -373,6 +373,8 @@ Creates the 2 stage pipeline (source, deploy) and specifies the bucket to store 
 ## Commands used
 
 To validate the template: `aws cloudformation validate-template --template-body file://codepipeline.yml`
+
+Alternatively: Install [cfn-lint](https://github.com/aws-cloudformation/cfn-lint) and use: `cfn-lint codepipeline.yml`
 
 To deploy stack: `aws cloudformation create-stack --stack-name codepipeline-stack --template-body file://codepipeline.yml` --capabilities CAPABILITY_IAM
 
