@@ -1,0 +1,127 @@
+---
+# Site deployment
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: join-site
+  namespace: prod-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      site: join
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        site: join
+    spec:
+      containers:
+      - image: nginx 
+        name: nginx-join
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+	
+--- 
+
+# Site service 
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: join-service
+  namespace: prod-app
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    site: join
+
+---
+# Register deployment
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: register-site
+  namespace: prod-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      site: register
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        site: register
+    spec:
+      containers:
+      - image: nginx 
+        name: nginx-register
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+	
+--- 
+
+# Register service
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: register-service
+  namespace: prod-app
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    site: register
+
+---
+
+# Ingress resource (in this scenario the ingress controller has already been installed)
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sites
+  namespace: prod-app
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx 
+  rules:
+  - host: "my.company.info"
+    http:
+      paths:
+      - path: /join
+        pathType: Prefix
+        backend:
+          service:
+            name: join-service
+            port:
+              number: 80
+      - path: /register
+        pathType: Prefix
+        backend:
+          service:
+            name: register-service
+            port:
+              number: 80
