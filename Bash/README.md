@@ -1,3 +1,3 @@
-# Bash
+# Bash Templates
 
-Contains bash scripts from other projects/labs
+Bash scripts from common admin tasks
