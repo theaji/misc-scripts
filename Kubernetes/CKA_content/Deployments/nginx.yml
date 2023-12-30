@@ -21,6 +21,6 @@ spec:
       labels:
         type: front-end
     spec:
-    containers:
-    - name: nginx-container
-      image: nginx
+      containers:
+      - name: nginx-container
+        image: nginx
