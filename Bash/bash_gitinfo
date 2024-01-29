@@ -1,0 +1,70 @@
+# Append to .bashrc to customize bash prompt
+# Features: 
+# - Adds git branch to prompt when inside a Git repository. 
+# - Adds status symbol to prompt depending on git status command
+# - Adds current date to bash prompt
+# - Adds vibrant bold colors to bash prompt
+
+
+function parse_git_info {
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return
+  fi
+
+  local status
+  status=$(git status --porcelain 2>/dev/null)
+
+  if [ -n "$status" ]; then
+    status_symbol=" ✘"
+  else
+    status_symbol=" ✔"
+  fi
+
+  local branch
+  branch="$(git symbolic-ref HEAD 2> /dev/null | cut -d'/' -f3-)"
+
+  local staged=0
+  local unstaged=0
+  local untracked=0
+
+  while IFS= read -r line; do
+    case "$line" in
+      "M "*|"A "*|"D "*)
+        ((staged++))
+        ;;
+      " M "*|" A "*|" D "*)
+        ((unstaged++))
+        ;;
+      "?? "*)
+        ((untracked++))
+        ;;
+    esac
+  done <<< "$status"
+
+  local info=""
+  if ((staged > 0 || unstaged > 0 || untracked > 0)); then
+    info+=" ["
+    if ((staged > 0)); then
+      info+="S:$staged"
+    fi
+    if ((unstaged > 0)); then
+      info+=" ~:$unstaged"
+    fi
+    if ((untracked > 0)); then
+      info+=" ?:$untracked"
+    fi
+    info+="]"
+  fi
+
+  echo -n "[$branch$status_symbol$info]"
+}
+
+YELLOW="\[\033[33;1m\]"
+BLUE="\[\033[34;1m\]"
+GREEN="\[\033[32;1m\]"
+WHITE="\[\033[37;1m\]"
+MAGENTA="\[\033[35;1m\]"
+CYAN="\[\033[36;1m\]"
+
+
+PS1="$YELLOW($(date +%H:%M:%S))±$MAGENTA[\u@\h]$BLUE[\w]$CYAN\$(parse_git_info):$WHITE\$ "
