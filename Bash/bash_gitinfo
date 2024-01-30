@@ -67,4 +67,4 @@ MAGENTA="\[\033[35;1m\]"
 CYAN="\[\033[36;1m\]"
 
 
-PS1="$YELLOW($(date +%H:%M:%S))±$MAGENTA[\u@\h]$BLUE[\w]$CYAN\$(parse_git_info):$WHITE\$ "
+PS1="$YELLOW($(date +%H:%M:%S))±$GREEN[\u@\h]$YELLOW[\w]$CYAN\$(parse_git_info):$WHITE\$ "
