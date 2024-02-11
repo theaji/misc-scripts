@@ -67,4 +67,12 @@ MAGENTA="\[\033[35;1m\]"
 CYAN="\[\033[36;1m\]"
 
 
-PS1="$YELLOW($(date +%H:%M:%S))±$GREEN[\u@\h]$YELLOW[\w]$CYAN\$(parse_git_info):$WHITE\$ "
+update_prompt() {
+    PS1="$YELLOW($(date +%H:%M:%S))±$GREEN[\u@\h]$YELLOW[\w]$CYAN\$(parse_git_info):$WHITE\$ "
+}
+
+# Set the initial prompt
+update_prompt
+
+# Update the prompt before displaying it
+PROMPT_COMMAND=update_prompt
