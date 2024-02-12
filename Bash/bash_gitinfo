@@ -1,12 +1,13 @@
 # Append to .bashrc to customize bash prompt
 # Features: 
 # - Adds git branch to prompt when inside a Git repository. 
+# - Add Kubernetes context and namespace (format: context(namespace) when kubectl command is present
 # - Adds status symbol to prompt depending on git status command
 # - Adds current date to bash prompt
 # - Adds vibrant bold colors to bash prompt
 
 
-function parse_git_info {
+parse_git_info() {
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return
   fi
@@ -59,6 +60,19 @@ function parse_git_info {
   echo -n "[$branch$status_symbol$info]"
 }
 
+# Function to get the current Kubernetes context
+get_k8s_context() {
+  if ! command -v kubectl >/dev/null 2>&1; then
+    return
+  fi
+    local context namespace
+    context=$(kubectl config current-context 2>/dev/null | awk -F@ '{print $2}')
+    namespace=$(kubectl config view --minify --output 'jsonpath={..namespace}' 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        echo "[$context($namespace)]"
+    fi
+}
+
 YELLOW="\[\033[33;1m\]"
 BLUE="\[\033[34;1m\]"
 GREEN="\[\033[32;1m\]"
@@ -68,7 +82,7 @@ CYAN="\[\033[36;1m\]"
 
 
 update_prompt() {
-    PS1="$YELLOW($(date +%H:%M:%S))±$GREEN[\u@\h]$YELLOW[\w]$CYAN\$(parse_git_info):$WHITE\$ "
+    PS1="$YELLOW($(date +%H:%M:%S))±$GREEN[\u@\h]$BLUE\$(get_k8s_context)$YELLOW[\w]$CYAN\$(parse_git_info):$WHITE\$ "
 }
 
 # Set the initial prompt
