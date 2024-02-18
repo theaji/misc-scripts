@@ -73,6 +73,19 @@ get_k8s_context() {
     fi
 }
 
+# Function to get python virtual environment
+parse_python_venv() {
+    # Check if a Python virtual environment is activated
+    if [ -n "$VIRTUAL_ENV" ]; then
+        # Get the name of the virtual environment directory
+        local venv_name
+        venv_name=$(basename "$VIRTUAL_ENV")
+
+        # Display the virtual environment name
+        echo "(${venv_name})"
+    fi
+}
+
 YELLOW="\[\033[33;1m\]"
 BLUE="\[\033[34;1m\]"
 GREEN="\[\033[32;1m\]"
@@ -82,7 +95,7 @@ CYAN="\[\033[36;1m\]"
 
 
 update_prompt() {
-    PS1="$YELLOW($(date +%H:%M:%S))±$GREEN[\u@\h]$BLUE\$(get_k8s_context)$YELLOW[\w]$CYAN\$(parse_git_info):$WHITE\$ "
+    PS1="$WHITE\$(parse_python_venv)$YELLOW($(date +%H:%M:%S))±$GREEN[\u@\h]$BLUE\$(get_k8s_context)$YELLOW[\w]$CYAN\$(parse_git_info):$WHITE\$ "
 }
 
 # Set the initial prompt
